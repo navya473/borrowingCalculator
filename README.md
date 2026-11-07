@@ -1,130 +1,101 @@
 # Borrowing Power Calculator
 
-Hello and thanks so much for taking the time to do the Ferocia Junior Engineering Code Exercise.
+A command line borrowing power calculator in JavaScript (Node.js). It estimates
+the maximum a person could borrow for a 30 year home loan, using tax and
+household expense (HEM) values fetched from a local API.
 
-This borrowing power calculator written in Javascript was started by one of our juniors, Gen (her full name is “Gen A. Eye”), but she she went on leave before she could finish it…
+This began as a starter project from a Ferocia junior engineering code
+exercise, where the original author had left it unfinished. I completed it by
+replacing placeholder functions with API calls, restructuring the code into a
+class, and adding a test suite with full coverage.
 
-We need you to progress the code in her absence. Once you’ve submitted your work and we’ve reviewed it, you’ll sit down and explain the code to Gens team members (our interviewers) in a pairing session.
+## How it works
 
-Keep in mind that we’ll expect you to be able to explain and expand on the code you submit.
+1. You enter gross annual income, number of dependents, declared monthly
+   expenses and total credit card limits.
+2. The calculator fetches annual tax and the HEM baseline from the API.
+3. It works out net monthly income: `(income - tax) / 12`.
+4. Living expenses are the higher of your declared expenses and the HEM value.
+5. Credit card liability is assumed to be 3% of total limits per month.
+6. Monthly repayment capacity is net income minus living expenses minus credit
+   card liability. If this is zero or negative, borrowing power is $0.
+7. Maximum loan is calculated with the standard amortisation formula over 360
+   months, at an assessment rate of 10% (7% interest plus a 3% buffer):
+   `P = M * (1 - (1 + R)^-N) / R`
+8. The result prints maximum borrowing power and monthly repayment, followed by
+   a simple breakdown of principal vs interest over 30 years.
 
-If you haven’t done much Javascript before don’t worry. We’ll take your experience into account, just give it your best shot. 
+## Design decisions
 
-You can see our online borrowing power calculator (Gens project is simplified so dont expect the number to match perfectly) to see how it work (https://www.bendigobank.com.au/personal/loans/calculators/borrowing-power/).
+- **`BorrowingCalculator` class:** groups the calculation logic and API access,
+  so it is easy to extend and to test with a mocked `fetchJson`.
+- **Shared `fetchJson` helper:** one place for the authorisation header, JSON
+  parsing and error handling. It distinguishes network failures ("Could not
+  reach the calculation server") from API errors (uses the server's message,
+  or falls back to the status code if the body is not JSON).
+- **Concurrent API calls:** tax and HEM do not depend on each other, so
+  `calculateBorrowingPower` fetches both with `Promise.all`.
+- **Configurable settings:** `API_TOKEN` and `API_BASE_URL` environment
+  variables override the defaults (the development token and
+  `http://localhost:3000`), so it runs out of the box.
+- **Input validation:** `parsePositiveNumber` rejects negative and non
+  numeric input. Dependents are rounded down to a whole number.
 
-## Please try to complete the following:
+## Bug found and fixed
 
-### Replace the two placeholder functions
-The code needs to calculate tax on income and a HEM (Household Expense Measure) value.
-Currently this is performed by placeholder code in the following functions:
-    getTax(income)
-    getHEM(income, dependents)
-You will need to replace the code in both with API calls.
-We have provided a server.js which can you run locally to expose the following 2 development endpoints:
-    http://localhost:3000/api/tax?income=[income]
-    http://localhost:3000/api/hem?income=[income]&dependents=[dependents]
-Both return JSON and require an authentication header with a valid PAT (Personal Access Token), see server.md for full documentation including the development PAT.
-
-### Make it manageable
-Gen planned to pull all the calculator functions into a class so she could extend it later, but we’ll leave it up to you to choose the approach (a well-formed class, an orchestrator function, a factory/closure pattern, or whatever)
-
-### Test coverage
-Of course we’ll need the test suite to pass and have full coverage.
-
-
-
-## Rules:
-
-Use whatever tools and resources help you get the job done. That includes AI, documentation, Stack Overflow, or anything else. What matters is that you understand every line you submit. In the follow-up pairing session, we'll ask you to walk us through your code, explain your decisions, and make changes on the fly - without an AI in Agent mode. If you can't do that confidently, it will count against you. The goal isn't to catch you out, it's to understand how you think.
+Input such as `$100,000` was silently truncated, because
+`parseFloat("100,000")` returns `100`, giving wrong results with no error.
+`parsePositiveNumber` now strips non numeric characters before parsing, with
+tests for commas, dollar signs and decimals.
 
 ## Setup
 
-Make sure you have Node.js installed.
+Requires Node.js 18 or later (the code uses the built in `fetch`).
 
-Install dependencies:
-```
-npm install
-```
+    npm install
 
-## Server
+## Run
 
-You wil need to run the development API in it's own terminal window.
-(The server will be available at http://localhost:3000/).
-To start the server run the following command:
-```
-npm run api
-```
-Note: You can stop the server with Ctrl+C
+Start the development API in its own terminal and leave it running:
 
+    npm run api
 
-## Running
+In a second terminal, run the calculator:
 
-Run the calculator with:
-```
-npm start
-```
+    npm start
 
+Try: income 120000, dependents 2, expenses 1400, credit limits 20000.
 
-## Testing
+## Test
 
-Run tests with:
-```
-npm test
-```
+    npm test
+    npm run coverage
 
+The 13 tests cover:
 
----
+- `fetchJson`: success, API error with a message, API error with no JSON body,
+  and network failure (using a mocked global `fetch`).
+- `calculateBorrowingPower`: a standard case, the zero repayment case, and
+  error propagation from the API layer.
+- `parsePositiveNumber`: plain numbers, commas and dollar signs, empty input,
+  non numeric text, negatives and decimals.
 
-## Implementation Notes
+Coverage is 100% for statements, branches, functions and lines.
+`runConsoleMode` and the command line entry point are excluded with
+`/* c8 ignore */` because they are interactive input and output, which I
+tested manually.
 
-Refactored the placeholder `getTax`/`getHEM` functions and `calculateBorrowingPower`
-into a `BorrowingCalculator` class, with a shared `fetchJson` helper that handles
-authentication headers and error handling for all API calls. Token and base URL
-are configurable via `API_TOKEN` / `API_BASE_URL` environment variables, falling
-back to the provided dev defaults so it runs out of the box.
+## Project structure
 
-`getTax` and `getHEM` are fetched concurrently with `Promise.all` in
-`calculateBorrowingPower`, since neither depends on the other's result.
+    borrowingCalculator.js   calculator class, input parsing, console mode
+    borrowingCalculator.test.js   test suite
+    server.js                local development API (provided with the exercise)
+    server.md                API documentation (provided with the exercise)
 
-**Bug found and fixed:** comma-formatted console input (e.g. `"$100,000"`) was
-being silently truncated by `parseFloat` (`parseFloat("100,000")` → `100`),
-producing wrong results with no error. Fixed by stripping non-numeric characters
-before parsing in `parsePositiveNumber`.
+## Notes
 
-### How to run it
-
-**1. Install dependencies:**
-
-npm install
-
-
-**2. Start the API server** (in its own terminal, leave it running):
-
-npm run api
-
-
-**3. Run the calculator** (in a second terminal):
-
-npm start
-
-
-### How to test
-
-**Run the test suite:**
-
-npm test
-
-9 core tests covering: the calculation math (standard case + the zero-repayment
-edge case), `fetchJson`'s success/failure branches (via mocked global `fetch`),
-error propagation from the API layer, and `parsePositiveNumber` input parsing
-(commas, blanks, negatives, decimals).
-
-**Check test coverage:**
-
-npm run coverage
-
-Reports 100% statements/branches/functions/lines. `runConsoleMode` and the CLI
-entry point (`if (require.main === module)`) are excluded via `/* c8 ignore */`,
-since they're interactive I/O tested manually rather than through automated
-tests — this manual testing is how the comma-parsing bug above was found. All
-business logic, error handling, and input parsing are covered by automated tests.
+- The calculator is simplified, so results will not match a real bank
+  calculator exactly.
+- The tax and HEM values come from mock formulas in the provided `server.js`.
+- The development token is for local use only. Set your own `API_TOKEN` if you
+  change the server.
